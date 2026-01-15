@@ -82,7 +82,7 @@ def display_image(cas):
 
 def show_detail_modal(row):
     """Streamlit 没有弹窗，改用展开详情"""
-    with st.expander(f"🔍 查看详情: {row['cas_number']}"):
+    with st.expander(f"查看详情: {row['cas_number']}"):
         cols = st.columns([1, 2])
         with cols[0]:
             st.markdown("### 基本信息")
@@ -119,7 +119,7 @@ def show_detail_modal(row):
 # 主界面
 # ======================
 st.set_page_config(page_title="化合物数据库查询系统", layout="wide")
-st.title("🧪 化合物数据库查询系统")
+st.title("化合物数据库查询系统")
 
 # 提示信息
 st.caption("注：阈值单位为mg/kg；括号内为年份；若无特殊说明，介质为水。")
@@ -138,11 +138,11 @@ with col3:
 # 按钮区
 btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
 with btn_col1:
-    do_search = st.button("🔍 查询")
+    do_search = st.button("查询")
 with btn_col2:
-    do_clear = st.button("🧹 清除")
+    do_clear = st.button("清除")
 with btn_col3:
-    uploaded_file = st.file_uploader("📂 批量查询 (上传 CAS 列表.txt)", type=["txt"])
+    uploaded_file = st.file_uploader("批量查询 (上传 CAS 列表.txt)", type=["txt"])
 
 # 清除逻辑
 if do_clear:
@@ -212,7 +212,7 @@ if not df.empty:
     st.dataframe(df_display, use_container_width=True)
 
     # 允许用户点击某一行查看详情 + 图片
-    selected_cas = st.selectbox("👉 选择一条记录查看结构图和详情", df["cas_number"].tolist(), key="detail_select")
+    selected_cas = st.selectbox("选择一条记录查看结构图和详情", df["cas_number"].tolist(), key="detail_select")
     if selected_cas:
         row = df[df["cas_number"] == selected_cas].iloc[0].to_dict()
         col_img, col_detail = st.columns([1, 2])
