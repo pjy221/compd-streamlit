@@ -3,8 +3,6 @@ from PIL import Image
 import sqlite3
 import pandas as pd
 import os
-from rapidfuzz import fuzz  # ← 新增依赖
-import re
 
 # ======================
 # 配置
@@ -28,7 +26,8 @@ def search_compounds(
         compound_name_cn="",
         category="",
         has_aroma="",  # "", "带香气", "不带香气"
-        compound_name_en=""
+        compound_name_en="",
+        detected_samples=""  # ← 新增参数：检出样品模糊查询
 ):
     conn = get_connection()
     query = "SELECT * FROM compounds WHERE 1=1"
@@ -46,6 +45,9 @@ def search_compounds(
     if compound_name_en:
         query += " AND compound_name_en LIKE ?"
         params.append(f"%{compound_name_en}%")
+    if detected_samples:  # ← 新增条件
+        query += " AND detected_samples LIKE ?"
+        params.append(f"%{detected_samples}%")
 
     if has_aroma == "带香气":
         query += " AND has_aroma = 1"
@@ -66,41 +68,6 @@ def batch_search_cas(cas_list):
     df = pd.read_sql_query(query, conn, params=cas_list)
     conn.close()
     return df
-
-
-# ======================
-# 新增：模糊过滤函数（基于 rapidfuzz）
-# ======================
-def fuzzy_filter_dataframe(df, query_text, threshold=65):
-    if df.empty or not query_text.strip():
-        return df
-
-    # 清洗查询（可选）
-    query_clean = re.sub(r'[^\w\s\u4e00-\u9fff]', ' ', query_text.lower()).strip()
-    if not query_clean:
-        query_clean = query_text.lower()
-
-    def get_best_score(row):
-        texts = [
-            str(row.get("compound_name_cn", "")),
-            str(row.get("compound_name_en", "")),
-            str(row.get("description", "")),
-            str(row.get("category", ""))
-        ]
-        scores = []
-        for t in texts:
-            t = t.lower()
-            scores.extend([
-                fuzz.token_sort_ratio(query_clean, t),
-                fuzz.partial_ratio(query_clean, t),
-                fuzz.token_set_ratio(query_clean, t)
-            ])
-        return max(scores) if scores else 0
-
-    df["_fuzzy_score"] = df.apply(get_best_score, axis=1)
-    filtered_df = df[df["_fuzzy_score"] >= threshold].copy()
-    filtered_df = filtered_df.sort_values("_fuzzy_score", ascending=False).head(30)
-    return filtered_df.drop(columns=["_fuzzy_score"])
 
 
 # ======================
@@ -125,7 +92,7 @@ st.set_page_config(page_title="化合物数据库查询系统", layout="wide")
 st.title("化合物数据库查询系统")
 st.caption("注：阈值单位为mg/kg；括号内为年份；若无特殊说明，介质为水。")
 
-# 初始化查询状态（含 free_text）
+# 初始化查询状态
 if "query" not in st.session_state:
     st.session_state.query = {
         "cas_number": "",
@@ -133,7 +100,7 @@ if "query" not in st.session_state:
         "category": "",
         "has_aroma": "",
         "compound_name_en": "",
-        "free_text": "",  # ← 新增自由关键词字段
+        "detected_samples": "",  # ← 新增字段
         "batch_mode": False,
         "batch_cas_list": []
     }
@@ -162,11 +129,7 @@ with col2:
     category = st.text_input("种类", value=st.session_state.query["category"], key="input_cat")
 with col3:
     compound_name_en = st.text_input("英文名", value=st.session_state.query["compound_name_en"], key="input_en")
-    free_text = st.text_input(
-        "自由关键词（支持模糊匹配）",
-        value=st.session_state.query["free_text"],
-        key="input_free"
-    )
+    detected_samples = st.text_input("检出样品", value=st.session_state.query["detected_samples"], key="input_detected")  # ← 新增输入框
 
 # 按钮区
 btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
@@ -178,7 +141,7 @@ with btn_col1:
             "category": category,
             "has_aroma": has_aroma,
             "compound_name_en": compound_name_en,
-            "free_text": free_text,  # ← 保存自由关键词
+            "detected_samples": detected_samples,  # ← 保存新字段
             "batch_mode": False
         })
         st.session_state.file_processed = False
@@ -192,22 +155,21 @@ with btn_col2:
             "category": "",
             "has_aroma": "",
             "compound_name_en": "",
-            "free_text": "",  # ← 清除
+            "detected_samples": "",  # ← 清除时重置
             "batch_mode": False,
             "batch_cas_list": []
         }
         st.session_state.file_processed = False
         st.session_state.selected_rows = []
-
-        # 清除输入框的特定 session_state 键
-        for key in ["input_cas", "input_aroma", "input_cn", "input_cat", "input_en", "input_free"]:
+        # 清除输入框的特定session_state键
+        for key in ["input_cas", "input_aroma", "input_cn", "input_cat", "input_en", "input_detected"]:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
 with btn_col3:
     uploaded_file = st.file_uploader("批量查询 (上传 CAS 列表.txt)", type=["txt"], key="file_uploader")
 
-# 处理批量上传
+# 处理批量上传 - 只在有文件且未处理过时执行
 if uploaded_file is not None and not st.session_state.file_processed:
     try:
         content = uploaded_file.getvalue().decode("utf-8")
@@ -221,7 +183,7 @@ if uploaded_file is not None and not st.session_state.file_processed:
                 "category": "",
                 "has_aroma": "",
                 "compound_name_en": "",
-                "free_text": ""
+                "detected_samples": ""  # 批量模式下清空其他条件
             })
             st.session_state.file_processed = True
             st.session_state.selected_rows = []
@@ -230,7 +192,7 @@ if uploaded_file is not None and not st.session_state.file_processed:
     except Exception as e:
         st.error(f"文件读取失败: {e}")
 
-# 执行查询
+# 执行查询（根据 session_state.query）
 if st.session_state.query.get("batch_mode", False):
     cas_list = st.session_state.query["batch_cas_list"]
     df = batch_search_cas(cas_list) if cas_list else pd.DataFrame()
@@ -243,25 +205,24 @@ if st.session_state.query.get("batch_mode", False):
     else:
         st.warning("未找到任何匹配记录。")
 else:
-    # 单条查询（含模糊关键词）
+    # 单条查询
     q = st.session_state.query
-    has_conditions = any([
-        q["cas_number"], q["compound_name_cn"], q["category"],
-        q["has_aroma"], q["compound_name_en"]
-    ])
-
-    if has_conditions or q["free_text"].strip():
-        # 先用结构化条件初筛
+    if any([
+        q["cas_number"],
+        q["compound_name_cn"],
+        q["category"],
+        q["has_aroma"],
+        q["compound_name_en"],
+        q["detected_samples"]  # ← 包含新字段
+    ]):
         df = search_compounds(
             cas_number=q["cas_number"],
             compound_name_cn=q["compound_name_cn"],
             category=q["category"],
             has_aroma=q["has_aroma"],
-            compound_name_en=q["compound_name_en"]
+            compound_name_en=q["compound_name_en"],
+            detected_samples=q["detected_samples"]  # ← 传入新参数
         )
-        # 再用自由关键词模糊过滤
-        if q["free_text"].strip():
-            df = fuzzy_filter_dataframe(df, q["free_text"], threshold=60)
     else:
         df = pd.DataFrame()
 
@@ -347,7 +308,7 @@ else:
                 st.session_state.query["category"],
                 st.session_state.query["has_aroma"],
                 st.session_state.query["compound_name_en"],
-                st.session_state.query["free_text"]
+                st.session_state.query["detected_samples"]  # ← 包含新字段
             ])
     ):
         st.info("未找到匹配的记录。")
