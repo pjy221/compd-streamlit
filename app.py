@@ -88,8 +88,20 @@ def display_image(cas):
 # ======================
 # 主界面
 # ======================
-st.set_page_config(page_title="化合物数据库查询系统", layout="wide")
-st.title("化合物数据库查询系统")
+st.set_page_config(page_title="海天政府项目研究-化合物数据库查询系统", layout="wide")
+st.markdown(
+    """
+    <div style="text-align: left; margin-bottom: 1rem;">
+        <div style="font-size: 2rem; font-weight: bold; line-height: 1.6;">
+            海天政府项目研究
+        </div>
+        <div style="font-size: 2rem; font-weight: bold; line-height: 1.6; ">
+            化合物数据库查询系统
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 st.caption("注：阈值单位为mg/kg；括号内为年份；若无特殊说明，介质为水。")
 
 # 初始化查询状态
