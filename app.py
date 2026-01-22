@@ -4,6 +4,7 @@ import sqlite3
 import pandas as pd
 import os
 from rapidfuzz import fuzz  # ← 新增依赖
+import re
 
 # ======================
 # 配置
@@ -70,49 +71,36 @@ def batch_search_cas(cas_list):
 # ======================
 # 新增：模糊过滤函数（基于 rapidfuzz）
 # ======================
-def fuzzy_filter_dataframe(df, query_text, threshold=60):
-    """
-    对 DataFrame 的多个文本列进行模糊匹配过滤
-    :param df: 原始查询结果 DataFrame
-    :param query_text: 用户输入的自由关键词
-    :param threshold: 相似度阈值（0-100）
-    :return: 过滤后的 DataFrame
-    """
+def fuzzy_filter_dataframe(df, query_text, threshold=65):
     if df.empty or not query_text.strip():
         return df
 
-    # 合并需要模糊匹配的列（中文名、英文名、描述、分类）
-    search_cols = ["compound_name_cn", "compound_name_en", "description", "category"]
+    # 清洗查询（可选）
+    query_clean = re.sub(r'[^\w\s\u4e00-\u9fff]', ' ', query_text.lower()).strip()
+    if not query_clean:
+        query_clean = query_text.lower()
 
-    # 确保这些列存在且为字符串
-    for col in search_cols:
-        if col not in df.columns:
-            df[col] = ""
-        df[col] = df[col].fillna("").astype(str)
+    def get_best_score(row):
+        texts = [
+            str(row.get("compound_name_cn", "")),
+            str(row.get("compound_name_en", "")),
+            str(row.get("description", "")),
+            str(row.get("category", ""))
+        ]
+        scores = []
+        for t in texts:
+            t = t.lower()
+            scores.extend([
+                fuzz.token_sort_ratio(query_clean, t),
+                fuzz.partial_ratio(query_clean, t),
+                fuzz.token_set_ratio(query_clean, t)
+            ])
+        return max(scores) if scores else 0
 
-    # 构造搜索文本：拼接所有相关字段
-    df["_search_text"] = (
-            df["compound_name_cn"] + " " +
-            df["compound_name_en"] + " " +
-            df["description"] + " " +
-            df["category"]
-    ).str.lower()
-
-    query_lower = query_text.lower()
-
-    # 计算每行的 partial_ratio 分数
-    df["_fuzzy_score"] = df["_search_text"].apply(
-        lambda x: fuzz.partial_ratio(query_lower, x)
-    )
-
-    # 过滤并按相似度排序
+    df["_fuzzy_score"] = df.apply(get_best_score, axis=1)
     filtered_df = df[df["_fuzzy_score"] >= threshold].copy()
-    filtered_df = filtered_df.sort_values(by="_fuzzy_score", ascending=False)
-
-    # 清理临时列
-    filtered_df = filtered_df.drop(columns=["_search_text", "_fuzzy_score"])
-
-    return filtered_df
+    filtered_df = filtered_df.sort_values("_fuzzy_score", ascending=False).head(30)
+    return filtered_df.drop(columns=["_fuzzy_score"])
 
 
 # ======================
