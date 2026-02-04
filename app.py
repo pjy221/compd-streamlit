@@ -382,11 +382,11 @@ else:
     ):
         st.info("未找到匹配的记录。")
 
-# ===== 显示 CSV 合并结果 + 导出按钮 =====
+# ===== 显示 CSV 合并结果 + 导出按钮 ===== v
 if "csv_merged_df" in st.session_state:
     st.subheader("CSV 批量查询结果")
     df_merged = st.session_state.csv_merged_df
-    st.dataframe(df_merged, use_container_width=True)
+    st.dataframe(df_merged, use_container_widt任何人幕僚的是h=True)
 
     output = io.BytesIO()
     df_merged.to_csv(output, index=False, encoding='utf-8-sig')
