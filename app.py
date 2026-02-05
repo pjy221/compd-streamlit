@@ -145,12 +145,12 @@ if detail_cas:
 
 else:
     # ===== 正常查询列表页 =====
-    st.set_page_config(page_title="XX政府项目研究-化合物数据库查询系统", layout="wide")
+    st.set_page_config(page_title="海天政府项目研究-化合物数据库查询系统", layout="wide")
     st.markdown(
         """
         <div style="text-align: left; margin-bottom: 1rem;">
             <div style="font-size: 2rem; font-weight: bold; line-height: 1.6;">
-                XX政府项目研究
+                海天政府项目研究
             </div>
             <div style="font-size: 2rem; font-weight: bold; line-height: 1.6; ">
                 化合物数据库查询系统
