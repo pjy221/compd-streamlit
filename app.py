@@ -411,7 +411,7 @@ def render_admin_dashboard():
 
 
 # ======================
-# 主程序逻辑
+# 主程序逻辑（修改后的主页）
 # ======================
 
 if "session_id" not in st.session_state:
@@ -469,16 +469,18 @@ if detail_cas:
                 st.text(f"{label}: {val}")
     st.stop()
 
-# 正常主页
-st.set_page_config(page_title="海天政府项目研究 - 化合物数据库查询系统", layout="wide")
+# ======================
+# 正常主页（重构为三个 Tab）
+# ======================
+st.set_page_config(page_title="海天政府项目成果共享平台", layout="wide")
 st.markdown(
     """
     <div style="text-align: left; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 10px;">
         <div style="font-size: 2rem; font-weight: bold; color: #2c3e50;">
-            海天政府项目研究
+            海天政府项目成果共享平台
         </div>
         <div style="font-size: 1.5rem; font-weight: bold; color: #34495e;">
-            化合物数据库查询系统
+            样品香气快速解析系统
         </div>
     </div>
     """,
@@ -486,6 +488,7 @@ st.markdown(
 )
 st.caption("注：阈值单位为 mg/kg；括号内为年份；若无特殊说明，介质为水。")
 
+# 初始化 session state
 if "query" not in st.session_state:
     st.session_state.query = {
         "cas_number": "", "compound_name_cn": "", "category": "", "has_aroma": "",
@@ -496,151 +499,228 @@ if "file_processed" not in st.session_state:
     st.session_state.file_processed = False
 if "csv_processed" not in st.session_state:
     st.session_state.csv_processed = False
+if "excel_processed" not in st.session_state:
+    st.session_state.excel_processed = False
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    cas_number = st.text_input("CAS号", value=st.session_state.query["cas_number"], key="input_cas")
-    has_aroma = st.selectbox("香气", ["", "带香气", "不带香气"], key="input_aroma",
-                             index=["", "带香气", "不带香气"].index(st.session_state.query["has_aroma"]) if
-                             st.session_state.query["has_aroma"] in ["", "带香气", "不带香气"] else 0)
-with col2:
-    compound_name_cn = st.text_input("中文名", value=st.session_state.query["compound_name_cn"], key="input_cn")
-    category = st.text_input("种类", value=st.session_state.query["category"], key="input_cat")
-with col3:
-    compound_name_en = st.text_input("英文名", value=st.session_state.query["compound_name_en"], key="input_en")
-    detected_samples = st.text_input("检出样品", value=st.session_state.query["detected_samples"], key="input_detected")
+# 创建三个标签页
+tab_batch, tab_single, tab_coming_soon = st.tabs(["批量导入查询", "单条查询", "其他"])
 
-btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
-with btn_col1:
-    if st.button("查询"):
-        log_action("search", {
-            "cas": cas_number, "cn": compound_name_cn, "en": compound_name_en
-        })
-        st.session_state.query.update({
-            "cas_number": cas_number, "compound_name_cn": compound_name_cn, "category": category,
-            "has_aroma": has_aroma, "compound_name_en": compound_name_en,
-            "detected_samples": detected_samples, "batch_mode": False
-        })
-        st.session_state.file_processed = False
-        st.session_state.csv_processed = False
-        st.rerun()
-with btn_col2:
-    if st.button("清除", type="secondary"):
-        st.session_state.query = {
-            "cas_number": "", "compound_name_cn": "", "category": "", "has_aroma": "",
-            "compound_name_en": "", "detected_samples": "", "batch_mode": False, "batch_cas_list": []
-        }
-        st.session_state.file_processed = False
-        st.session_state.csv_processed = False
-        for key in ["input_cas", "input_aroma", "input_cn", "input_cat", "input_en", "input_detected"]:
-            if key in st.session_state: del st.session_state[key]
-        st.rerun()
-with btn_col3:
-    uploaded_file = st.file_uploader("批量查询 (上传 CAS 列表.txt)", type=["txt"], key="file_uploader")
-    uploaded_csv = st.file_uploader("批量查询 (上传含 CAS# 的 CSV)", type=["csv"], key="csv_uploader")
+# ======================
+# Tab 1: 批量导入查询（支持 TXT / CSV / Excel）
+# ======================
+with tab_batch:
+    st.markdown("### 批量查询（支持多种格式）")
 
-# 处理 .txt
-if uploaded_file is not None and not st.session_state.file_processed:
-    try:
-        content = uploaded_file.getvalue().decode("utf-8")
-        cas_list = [line.strip() for line in content.splitlines() if line.strip()]
-        if cas_list:
-            log_action("search", {"batch_count": len(cas_list), "source": "txt", "cas": cas_list})
+    # 文件上传区域
+    uploaded_txt = st.file_uploader("上传 CAS 列表 (.txt，每行一个 CAS 号)", type=["txt"], key="txt_uploader")
+    uploaded_csv = st.file_uploader("上传含 'CAS#' 列的表格 (.csv)", type=["csv"], key="csv_uploader_batch")
+    uploaded_excel = st.file_uploader("上传含 'CAS#' 列的表格 (.xlsx)", type=["xlsx"], key="excel_uploader")
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_filename = f"{timestamp}_{uploaded_file.name}"
-            save_path = os.path.join(UPLOAD_DIR, safe_filename)
-            with open(save_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
-            log_upload(safe_filename, len(cas_list), 0, {"preview": content[:200]}, save_path)
-
-            st.session_state.query.update({
-                "batch_mode": True, "batch_cas_list": cas_list, "cas_number": "", "compound_name_cn": "",
-                "category": "", "has_aroma": "", "compound_name_en": "", "detected_samples": ""
-            })
-            st.session_state.file_processed = True
-            st.success(f"成功读取 {len(cas_list)} 个 CAS 号")
-            st.rerun()
-    except Exception as e:
-        st.error(f"文件读取失败：{e}")
-
-# 处理 CSV
-if uploaded_csv is not None and not st.session_state.get("csv_processed", False):
-    try:
-        df_input = pd.read_csv(uploaded_csv, dtype=str)
-        if "CAS#" not in df_input.columns:
-            st.error("CSV 文件必须包含 'CAS#' 列！")
-        else:
-            cas_series = df_input["CAS#"].dropna().astype(str).str.strip()
-            cas_list = cas_series[cas_series != ""].tolist()
-
-            if not cas_list:
-                st.warning("CAS# 列中没有有效数据。")
-            else:
-                df_db_results = batch_search_cas(cas_list)
-                matched_count = df_db_results.shape[0]
-
+    # --- 处理 TXT ---
+    if uploaded_txt is not None and not st.session_state.file_processed:
+        try:
+            content = uploaded_txt.getvalue().decode("utf-8")
+            cas_list = [line.strip() for line in content.splitlines() if line.strip()]
+            if cas_list:
+                log_action("search", {"batch_count": len(cas_list), "source": "txt", "cas": cas_list})
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_filename = f"{timestamp}_{uploaded_csv.name}"
+                safe_filename = f"{timestamp}_{uploaded_txt.name}"
                 save_path = os.path.join(UPLOAD_DIR, safe_filename)
-                with open(save_path, "wb") as f:
-                    f.write(uploaded_csv.getvalue())
-
-                log_upload(
-                    safe_filename,
-                    len(cas_list),
-                    matched_count,
-                    df_input.head(5).to_dict(),
-                    save_path,
-                    session_id=st.session_state.session_id
-                )
-
-                if df_db_results.empty:
-                    st.warning("数据库中未找到任何匹配的 CAS 号。")
-                    df_merged = df_input.copy()
-                    df_merged['匹配状态'] = '未匹配'
-                else:
-                    df_db_results["cas_number"] = df_db_results["cas_number"].astype(str)
-                    df_input["CAS#"] = df_input["CAS#"].astype(str)
-                    df_merged = pd.merge(df_input, df_db_results, left_on="CAS#", right_on="cas_number", how="left")
-                    df_merged['匹配状态'] = df_merged['compound_name_cn'].apply(
-                        lambda x: '匹配成功' if pd.notna(x) else '未匹配')
-                    if "cas_number" in df_merged.columns:
-                        df_merged.drop(columns=["cas_number"], inplace=True)
-
-                columns_to_remove = ["id", "molecular_formula", "compound_name_en", "ri_semi_nonpolar", "ri_nonpolar"]
-                cols_to_drop = [col for col in columns_to_remove if col in df_merged.columns]
-                if cols_to_drop:
-                    df_merged = df_merged.drop(columns=cols_to_drop)
-
-                st.session_state.csv_merged_df = df_merged
-                st.session_state.csv_processed = True
-                st.session_state.csv_filename = safe_filename
-
-                st.success(f"成功处理，共 {len(cas_list)} 个，匹配 {matched_count} 条。文件已存档。")
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                log_upload(safe_filename, len(cas_list), 0, {"preview": content[:200]}, save_path)
+                st.session_state.query.update({
+                    "batch_mode": True, "batch_cas_list": cas_list,
+                    "cas_number": "", "compound_name_cn": "", "category": "",
+                    "has_aroma": "", "compound_name_en": "", "detected_samples": ""
+                })
+                st.session_state.file_processed = True
+                st.success(f"成功读取 {len(cas_list)} 个 CAS 号（来自 TXT）")
                 st.rerun()
-    except Exception as e:
-        st.error(f"CSV 处理失败：{e}")
-        st.session_state.csv_processed = False
+        except Exception as e:
+            st.error(f"TXT 文件读取失败：{e}")
 
-# 执行查询逻辑
+    # --- 处理 CSV ---
+    if uploaded_csv is not None and not st.session_state.get("csv_processed", False):
+        try:
+            df_input = pd.read_csv(uploaded_csv, dtype=str)
+            if "CAS#" not in df_input.columns:
+                st.error("CSV 文件必须包含 'CAS#' 列！")
+            else:
+                cas_series = df_input["CAS#"].dropna().astype(str).str.strip()
+                cas_list = cas_series[cas_series != ""].tolist()
+                if not cas_list:
+                    st.warning("CAS# 列中没有有效数据。")
+                else:
+                    df_db_results = batch_search_cas(cas_list)
+                    matched_count = df_db_results.shape[0]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    safe_filename = f"{timestamp}_{uploaded_csv.name}"
+                    save_path = os.path.join(UPLOAD_DIR, safe_filename)
+                    with open(save_path, "wb") as f:
+                        f.write(uploaded_csv.getvalue())
+                    log_upload(safe_filename, len(cas_list), matched_count, df_input.head(5).to_dict(), save_path)
+                    if df_db_results.empty:
+                        df_merged = df_input.copy()
+                        df_merged['匹配状态'] = '未匹配'
+                    else:
+                        df_db_results["cas_number"] = df_db_results["cas_number"].astype(str)
+                        df_input["CAS#"] = df_input["CAS#"].astype(str)
+                        df_merged = pd.merge(df_input, df_db_results, left_on="CAS#", right_on="cas_number", how="left")
+                        df_merged['匹配状态'] = df_merged['compound_name_cn'].apply(
+                            lambda x: '匹配成功' if pd.notna(x) else '未匹配')
+                        if "cas_number" in df_merged.columns:
+                            df_merged.drop(columns=["cas_number"], inplace=True)
+                    columns_to_remove = ["id", "molecular_formula", "compound_name_en", "ri_semi_nonpolar",
+                                         "ri_nonpolar"]
+                    cols_to_drop = [col for col in columns_to_remove if col in df_merged.columns]
+                    if cols_to_drop:
+                        df_merged = df_merged.drop(columns=cols_to_drop)
+                    st.session_state.csv_merged_df = df_merged
+                    st.session_state.csv_processed = True
+                    st.session_state.csv_filename = safe_filename
+                    st.success(f"成功处理 CSV：共 {len(cas_list)} 个，匹配 {matched_count} 条。")
+                    st.rerun()
+        except Exception as e:
+            st.error(f"CSV 处理失败：{e}")
+            st.session_state.csv_processed = False
+
+    # --- 处理 Excel (.xlsx) ---
+    if uploaded_excel is not None and not st.session_state.get("excel_processed", False):
+        try:
+            df_input = pd.read_excel(uploaded_excel, dtype=str)
+            if "CAS#" not in df_input.columns:
+                st.error("Excel 文件必须包含 'CAS#' 列！")
+            else:
+                cas_series = df_input["CAS#"].dropna().astype(str).str.strip()
+                cas_list = cas_series[cas_series != ""].tolist()
+                if not cas_list:
+                    st.warning("CAS# 列中没有有效数据。")
+                else:
+                    df_db_results = batch_search_cas(cas_list)
+                    matched_count = df_db_results.shape[0]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    safe_filename = f"{timestamp}_{uploaded_excel.name}"
+                    save_path = os.path.join(UPLOAD_DIR, safe_filename)
+                    with open(save_path, "wb") as f:
+                        f.write(uploaded_excel.getvalue())
+                    log_upload(safe_filename, len(cas_list), matched_count, df_input.head(5).to_dict(), save_path)
+                    if df_db_results.empty:
+                        df_merged = df_input.copy()
+                        df_merged['匹配状态'] = '未匹配'
+                    else:
+                        df_db_results["cas_number"] = df_db_results["cas_number"].astype(str)
+                        df_input["CAS#"] = df_input["CAS#"].astype(str)
+                        df_merged = pd.merge(df_input, df_db_results, left_on="CAS#", right_on="cas_number", how="left")
+                        df_merged['匹配状态'] = df_merged['compound_name_cn'].apply(
+                            lambda x: '匹配成功' if pd.notna(x) else '未匹配')
+                        if "cas_number" in df_merged.columns:
+                            df_merged.drop(columns=["cas_number"], inplace=True)
+                    columns_to_remove = ["id", "molecular_formula", "compound_name_en", "ri_semi_nonpolar",
+                                         "ri_nonpolar"]
+                    cols_to_drop = [col for col in columns_to_remove if col in df_merged.columns]
+                    if cols_to_drop:
+                        df_merged = df_merged.drop(columns=cols_to_drop)
+                    st.session_state.csv_merged_df = df_merged  # 复用 CSV 的显示逻辑
+                    st.session_state.csv_processed = True
+                    st.session_state.csv_filename = safe_filename
+                    st.session_state.excel_processed = True
+                    st.success(f"成功处理 Excel：共 {len(cas_list)} 个，匹配 {matched_count} 条。")
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Excel 文件处理失败：{e}")
+            st.session_state.excel_processed = False
+
+    # 显示批量查询结果（复用原逻辑）
+    if "csv_merged_df" in st.session_state:
+        st.subheader("批量查询结果")
+        df_merged = st.session_state.csv_merged_df
+        match_rate = (df_merged['匹配状态'] == '匹配成功').sum() / len(df_merged) * 100
+        st.metric("本次上传匹配率", f"{match_rate:.1f}%")
+        st.dataframe(df_merged, use_container_width=True, hide_index=True)
+        output = io.BytesIO()
+        df_merged.to_csv(output, index=False, encoding='utf-8-sig')
+        st.download_button(
+            label="下载合并后的结果文件",
+            data=output.getvalue(),
+            file_name=f"result_{st.session_state.csv_filename}",
+            mime="text/csv"
+        )
+        if st.button("清除结果", key="clear_batch_result"):
+            for k in ["csv_merged_df", "csv_processed", "csv_filename", "excel_processed"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
+
+# ======================
+# Tab 2: 单条查询
+# ======================
+with tab_single:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        cas_number = st.text_input("CAS号", value=st.session_state.query["cas_number"], key="input_cas")
+        has_aroma = st.selectbox("香气", ["", "带香气", "不带香气"], key="input_aroma",
+                                 index=["", "带香气", "不带香气"].index(st.session_state.query["has_aroma"]) if
+                                 st.session_state.query["has_aroma"] in ["", "带香气", "不带香气"] else 0)
+    with col2:
+        compound_name_cn = st.text_input("中文名", value=st.session_state.query["compound_name_cn"], key="input_cn")
+        category = st.text_input("种类", value=st.session_state.query["category"], key="input_cat")
+    with col3:
+        compound_name_en = st.text_input("英文名", value=st.session_state.query["compound_name_en"], key="input_en")
+        detected_samples = st.text_input("检出样品", value=st.session_state.query["detected_samples"],
+                                         key="input_detected")
+
+    btn_col1, btn_col2 = st.columns([1, 1])
+    with btn_col1:
+        if st.button("查询"):
+            log_action("search", {
+                "cas": cas_number, "cn": compound_name_cn, "en": compound_name_en
+            })
+            st.session_state.query.update({
+                "cas_number": cas_number, "compound_name_cn": compound_name_cn, "category": category,
+                "has_aroma": has_aroma, "compound_name_en": compound_name_en,
+                "detected_samples": detected_samples, "batch_mode": False
+            })
+            st.session_state.file_processed = False
+            st.session_state.csv_processed = False
+            st.session_state.excel_processed = False
+            if "csv_merged_df" in st.session_state:
+                del st.session_state.csv_merged_df
+            st.rerun()
+    with btn_col2:
+        if st.button("清除", type="secondary"):
+            st.session_state.query = {
+                "cas_number": "", "compound_name_cn": "", "category": "", "has_aroma": "",
+                "compound_name_en": "", "detected_samples": "", "batch_mode": False, "batch_cas_list": []
+            }
+            st.session_state.file_processed = False
+            st.session_state.csv_processed = False
+            st.session_state.excel_processed = False
+            for key in ["input_cas", "input_aroma", "input_cn", "input_cat", "input_en", "input_detected"]:
+                if key in st.session_state: del st.session_state[key]
+            if "csv_merged_df" in st.session_state:
+                del st.session_state.csv_merged_df
+            st.rerun()
+
+# ======================
+# Tab 3: 功能未开放
+# ======================
+with tab_coming_soon:
+    st.markdown(
+        '<p style="font-size: 16px; font-weight: normal; ">还未开发定量功能，敬请期待</p>',
+        unsafe_allow_html=True
+    )
+
+# ======================
+# 执行查询逻辑（根据当前状态）
+# ======================
+# 注意：批量模式由 tab_batch 处理，单条由 tab_single 触发
+df = pd.DataFrame()
 if st.session_state.query.get("batch_mode", False):
     cas_list = st.session_state.query["batch_cas_list"]
     df = batch_search_cas(cas_list) if cas_list else pd.DataFrame()
-
-    if not df.empty:
-        found_cas = set(df["cas_number"].tolist())
-        missing = [c for c in cas_list if c not in found_cas]
-        st.success(f"批量查询完成：{len(found_cas)}/{len(cas_list)} 个匹配")
-        if missing:
-            st.warning(f"未找到的 CAS: {', '.join(missing[:10])}..." if len(
-                missing) > 10 else f"未找到的 CAS: {', '.join(missing)}")
-    else:
-        st.warning("未找到任何匹配记录。")
 else:
     q = st.session_state.query
-
     search_params = {
         "cas_number": q.get("cas_number", ""),
         "compound_name_cn": q.get("compound_name_cn", ""),
@@ -649,70 +729,43 @@ else:
         "compound_name_en": q.get("compound_name_en", ""),
         "detected_samples": q.get("detected_samples", "")
     }
-
     if any(search_params.values()):
         df = search_compounds(**search_params)
+
+# ======================
+# 显示单条查询结果（仅在单条查询 tab 中显示）
+# ======================
+with tab_single:
+    if not df.empty:
+        df["has_aroma_display"] = df["has_aroma"].apply(lambda x: "是" if x == 1 else "否")
+        st.subheader(f"查询结果（共 {len(df)} 条）")
+
+        for idx, row in df.iterrows():
+            cas = row["cas_number"]
+            name = row.get("compound_name_cn", "未知名称")
+            desc = row.get("description", "")
+            aroma = row.get("has_aroma_display", "否")
+
+            with st.container(border=True):
+                col_left, col_right = st.columns([4, 1])
+                with col_left:
+                    st.markdown(f"**{name}** （CAS: `{cas}`）")
+                    if desc:
+                        st.caption(desc)
+                    st.markdown(
+                        f"**分类**: {row.get('category', '—')} | **检出样品**: {row.get('detected_samples', '—')} | **有香气**: {aroma}")
+                with col_right:
+                    if st.button("查看详情", key=f"view_{cas}_{idx}"):
+                        st.query_params["detail"] = quote(cas)
+                        st.rerun()
     else:
-        df = pd.DataFrame()
-
-# 显示结果
-if not df.empty:
-    df["has_aroma_display"] = df["has_aroma"].apply(lambda x: "是" if x == 1 else "否")
-    st.subheader(f"查询结果（共 {len(df)} 条）")
-
-    for idx, row in df.iterrows():
-        cas = row["cas_number"]
-        name = row.get("compound_name_cn", "未知名称")
-        desc = row.get("description", "")
-        aroma = row.get("has_aroma_display", "否")
-
-        with st.container(border=True):
-            col_left, col_right = st.columns([4, 1])
-            with col_left:
-                st.markdown(f"**{name}** （CAS: `{cas}`）")
-                if desc:
-                    st.caption(desc)
-                st.markdown(
-                    f"**分类**: {row.get('category', '—')} | **检出样品**: {row.get('detected_samples', '—')} | **有香气**: {aroma}")
-            with col_right:
-                if st.button("查看详情", key=f"view_{cas}_{idx}"):
-                    st.query_params["detail"] = quote(cas)
-                    st.rerun()
-else:
-    has_search_params = any([
-        st.session_state.query.get("cas_number"),
-        st.session_state.query.get("compound_name_cn"),
-        st.session_state.query.get("category"),
-        st.session_state.query.get("has_aroma"),
-        st.session_state.query.get("compound_name_en"),
-        st.session_state.query.get("detected_samples")
-    ])
-
-    if st.session_state.query.get("batch_mode") or has_search_params:
-        st.info("未找到匹配的记录。")
-
-# 显示 CSV 结果
-if "csv_merged_df" in st.session_state:
-    st.subheader("CSV 批量查询结果")
-    df_merged = st.session_state.csv_merged_df
-
-    match_rate = (df_merged['匹配状态'] == '匹配成功').sum() / len(df_merged) * 100
-    st.metric("本次上传匹配率", f"{match_rate:.1f}%")
-
-    st.dataframe(df_merged, use_container_width=True, hide_index=True)
-
-    output = io.BytesIO()
-    df_merged.to_csv(output, index=False, encoding='utf-8-sig')
-
-    st.download_button(
-        label="下载合并后的 CSV 文件",
-        data=output.getvalue(),
-        file_name=f"result_{st.session_state.csv_filename}",
-        mime="text/csv"
-    )
-
-    if st.button("清除 CSV 结果"):
-        keys_to_del = ["csv_merged_df", "csv_processed", "csv_filename"]
-        for k in keys_to_del:
-            if k in st.session_state: del st.session_state[k]
-        st.rerun()
+        has_search_params = any([
+            st.session_state.query.get("cas_number"),
+            st.session_state.query.get("compound_name_cn"),
+            st.session_state.query.get("category"),
+            st.session_state.query.get("has_aroma"),
+            st.session_state.query.get("compound_name_en"),
+            st.session_state.query.get("detected_samples")
+        ])
+        if not st.session_state.query.get("batch_mode") and has_search_params:
+            st.info("未找到匹配的记录。")
