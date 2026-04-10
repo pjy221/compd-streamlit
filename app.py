@@ -480,7 +480,7 @@ st.markdown(
             海天政府项目成果共享平台
         </div>
         <div style="font-size: 1.5rem; font-weight: bold; color: #34495e;">
-            样品香气快速解析系统
+            发酵样品香气快速解析系统
         </div>
     </div>
     """,
@@ -503,44 +503,36 @@ if "excel_processed" not in st.session_state:
     st.session_state.excel_processed = False
 
 # 创建三个标签页
-tab_batch, tab_single, tab_coming_soon = st.tabs(["批量导入查询", "单条查询", "其他"])
+tab_batch, tab_single, tab_coming_soon = st.tabs(["定性分析", "单条查询", "其他"])
 
 # ======================
-# Tab 1: 批量导入查询（支持 TXT / CSV / Excel）
+# Tab 1: 定性分析-批量导入查询（支持CSV / Excel）
 # ======================
 with tab_batch:
-    st.markdown("### 批量查询（支持多种格式）")
+    st.markdown(
+        """
+        <div style="font-size: 22px; font-weight: bold;line-height: 2.4; color: #333;">
+            批量导入查询（支持多种格式）
+        </div>
+        """,
+        unsafe_allow_html=True
+)
+    st.markdown(
+        """
+        <div style="font-size: 18px; font-weight: normal; color: #333;">
+            上传设备导出的原始文件，系统将自动解析并生成可预览、下载的查询结果。<br>
+注：“CAS#”须为标准格式（如123-07-9），不接受斜杠等非标准格式（如 4313/3/5）。<br>
+<br>
+        </div>
+        """,
+        unsafe_allow_html=True
+)
 
     # 文件上传区域
-    uploaded_txt = st.file_uploader("上传 CAS 列表 (.txt，每行一个 CAS 号)", type=["txt"], key="txt_uploader")
-    uploaded_csv = st.file_uploader("上传含 'CAS#' 列的表格 (.csv)", type=["csv"], key="csv_uploader_batch")
-    uploaded_excel = st.file_uploader("上传含 'CAS#' 列的表格 (.xlsx)", type=["xlsx"], key="excel_uploader")
+    uploaded_csv = st.file_uploader("csv上传含 'CAS#' 列的表格 (.csv)", type=["csv"], key="csv_uploader_batch")
+    uploaded_excel = st.file_uploader("xlsx上传含 'CAS#' 列的表格 (.xlsx)", type=["xlsx"], key="excel_uploader")
 
-    # --- 处理 TXT ---
-    if uploaded_txt is not None and not st.session_state.file_processed:
-        try:
-            content = uploaded_txt.getvalue().decode("utf-8")
-            cas_list = [line.strip() for line in content.splitlines() if line.strip()]
-            if cas_list:
-                log_action("search", {"batch_count": len(cas_list), "source": "txt", "cas": cas_list})
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_filename = f"{timestamp}_{uploaded_txt.name}"
-                save_path = os.path.join(UPLOAD_DIR, safe_filename)
-                with open(save_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                log_upload(safe_filename, len(cas_list), 0, {"preview": content[:200]}, save_path)
-                st.session_state.query.update({
-                    "batch_mode": True, "batch_cas_list": cas_list,
-                    "cas_number": "", "compound_name_cn": "", "category": "",
-                    "has_aroma": "", "compound_name_en": "", "detected_samples": ""
-                })
-                st.session_state.file_processed = True
-                st.success(f"成功读取 {len(cas_list)} 个 CAS 号（来自 TXT）")
-                st.rerun()
-        except Exception as e:
-            st.error(f"TXT 文件读取失败：{e}")
-
-    # --- 处理 CSV ---
+        # --- 处理 CSV ---
     if uploaded_csv is not None and not st.session_state.get("csv_processed", False):
         try:
             df_input = pd.read_csv(uploaded_csv, dtype=str)
