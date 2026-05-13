@@ -51,6 +51,7 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
 
+    # --- 修改：添加 qualitative_ions 字段 ---
     c.execute("""
     CREATE TABLE IF NOT EXISTS compounds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +65,7 @@ def init_db():
         threshold_detection TEXT,
         threshold_recognition TEXT,
         ion_fragments TEXT,
+        qualitative_ions TEXT,          -- ✅ 新增字段
         odor TEXT,
         ri_polar TEXT,
         ri_semi_nonpolar TEXT,
@@ -462,14 +464,26 @@ if detail_cas:
         with col_img:
             display_image(cas)
         with col_detail:
+            # --- 修改：更新字段标签和顺序 ---
             fields = [
-                ("CAS号", "cas_number"), ("中文名", "compound_name_cn"), ("英文名", "compound_name_en"),
-                ("分子量", "molecular_weight"), ("分子式", "molecular_formula"), ("描述", "description"),
-                ("阈值-阈值", "threshold_threshold"), ("阈值-觉察 (d)", "threshold_detection"),
-                ("阈值-识别 (r)", "threshold_recognition"), ("离子碎片", "ion_fragments"),
-                ("气味", "odor"), ("保留指数-极性", "ri_polar"),
-                ("保留指数-半非极性", "ri_semi_nonpolar"), ("保留指数-非极性", "ri_nonpolar"),
-                ("分类", "category"), ("检出样品", "detected_samples"), ("是否有香气", "has_aroma")
+                ("CAS号", "cas_number"),
+                ("中文名", "compound_name_cn"),
+                ("英文名", "compound_name_en"),
+                ("分子量", "molecular_weight"),
+                ("分子式", "molecular_formula"),
+                ("描述与性状", "description"),                # ✅ 原“描述”
+                ("阈值-阈值", "threshold_threshold"),
+                ("阈值-觉察 (d)", "threshold_detection"),
+                ("阈值-识别 (r)", "threshold_recognition"),
+                ("离子碎片", "ion_fragments"),
+                ("定性特征离子", "qualitative_ions"),        # ✅ 新增
+                ("气味", "odor"),
+                ("保留指数-极性", "ri_polar"),
+                ("保留指数-半非极性", "ri_semi_nonpolar"),
+                ("保留指数-非极性", "ri_nonpolar"),
+                ("分类", "category"),
+                ("检出样品", "detected_samples"),
+                ("是否有气味", "has_aroma")                  # ✅ 原“是否有香气”
             ]
             for label, key in fields:
                 val = row.get(key, "")
